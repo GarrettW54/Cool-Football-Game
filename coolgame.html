@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Flappy Football (American Style)</title>
+  <style>
+    body { background: #87cefa; margin: 0; overflow: hidden; }
+    canvas { display: block; margin: 0 auto; background: #87cefa; }
+    #overlay {
+      position: absolute;
+      left: 0; top: 0; width: 100vw; height: 100vh;
+      display: flex; justify-content: center; align-items: center;
+      pointer-events: none; z-index: 10;
+    }
+    #gameover {
+      font-size: 3em; color: #b22222; font-family: Arial, sans-serif;
+      text-shadow: 2px 2px 10px #fff;
+      background: rgba(255,255,255,0.8);
+      padding: 1.2em 2em;
+      border-radius: 1em;
+      pointer-events: auto;
+      display: flex; flex-direction: column; align-items: center;
+    }
+    #score {
+      position: absolute;
+      left: 20px; top: 20px;
+      font-size: 2em; color: #222; font-family: Arial, sans-serif;
+      text-shadow: 1px 1px 4px #fff;
+      z-index: 11;
+    }
+    button {
+      font-size: 1em;
+      padding: 0.5em 1em;
+      margin-top: 1em;
+      cursor: pointer;
+      border-radius: 0.5em;
+      border: 1px solid #b22222;
+      background: #fff3;
+      transition: background 0.2s;
+    }
+    button:hover {
+      background: #ffdede;
+    }
+  </style>
+</head>
+<body>
+<canvas id="game" width="400" height="600"></canvas>
+<div id="score"></div>
+<div id="overlay"></div>
+<script>
+const WIDTH = 400, HEIGHT = 600;
+const BALL_RADIUS = 22;
+// SLOWER GAMEPLAY
+const GRAVITY = 0.33;
+const FLAP_STRENGTH = -6;
+const PIPE_WIDTH = 70;
+const PIPE_GAP = 170;
+const PIPE_SPEED = 2; // SLOWER
+const FPS = 60;
+
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const overlay = document.getElementById('overlay');
+const scoreDiv = document.getElementById('score');
+
+let ballY, ballVel, pipes, score, running;
+
+function resetGame() {
+  ballY = HEIGHT / 2;
+  ballVel = 0;
+  pipes = [newPipe()];
+  score = 0;
+  running = true;
+  overlay.innerHTML = "";
+  scoreDiv.innerText = "";
+}
+
+function drawFootball(x, y, ctx) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(-0.2);
+  ctx.beginPath();
+  ctx.ellipse(0, 0, BALL_RADIUS, BALL_RADIUS * 0.65, 0, 0, 2 * Math.PI);
+  ctx.fillStyle = "#964B00";
+  ctx.fill();
+  ctx.lineWidth = 4;
+  ctx.strokeStyle = "#fff";
+  ctx.stroke();
+
+  // White stripes
+  ctx.lineWidth = 5;
+  ctx.beginPath();
+  ctx.moveTo(-BALL_RADIUS * 0.7, -BALL_RADIUS * 0.4);
+  ctx.lineTo(-BALL_RADIUS * 0.4, -BALL_RADIUS * 0.2);
+  ctx.strokeStyle = "#fff";
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.moveTo(BALL_RADIUS * 0.7, BALL_RADIUS * 0.4);
+  ctx.lineTo(BALL_RADIUS * 0.4, BALL_RADIUS * 0.2);
+  ctx.strokeStyle = "#fff";
+  ctx.stroke();
+
+  // Laces
+  ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  ctx.moveTo(-8, 0);
+  ctx.lineTo(8, 0);
+  ctx.strokeStyle = "#fff";
+  ctx.stroke();
+
+  for (let i = -6; i <= 6; i += 6) {
+    ctx.beginPath();
+    ctx.moveTo(i, -4);
+    ctx.lineTo(i, 4);
+    ctx.stroke();
+  }
+
+  ctx.restore();
+}
+
+function newPipe() {
+  const top = 50 + Math.random() * (HEIGHT - PIPE_GAP - 100);
+  return { x: WIDTH + PIPE_WIDTH, top: top, passed: false };
+}
+
+function drawPipe(pipe) {
+  ctx.fillStyle = "#228B22";
+  ctx.fillRect(pipe.x, 0, PIPE_WIDTH, pipe.top);
+  ctx.fillRect(pipe.x, pipe.top + PIPE_GAP, PIPE_WIDTH, HEIGHT - pipe.top - PIPE_GAP);
+  // Add white "yard lines"
+  ctx.strokeStyle = "#fff";
+  ctx.lineWidth = 2;
+  for (let y = 10; y < pipe.top; y += 24) {
+    ctx.beginPath();
+    ctx.moveTo(pipe.x, y);
+    ctx.lineTo(pipe.x + PIPE_WIDTH, y);
+    ctx.stroke();
+  }
+  for (let y = pipe.top + PIPE_GAP; y < HEIGHT; y += 24) {
+    ctx.beginPath();
+    ctx.moveTo(pipe.x, y);
+    ctx.lineTo(pipe.x + PIPE_WIDTH, y);
+    ctx.stroke();
+  }
+}
+
+function collide(ballY, pipe) {
+  const ballX = WIDTH / 4;
+  if (ballX + BALL_RADIUS > pipe.x && ballX - BALL_RADIUS < pipe.x + PIPE_WIDTH) {
+    if (ballY - BALL_RADIUS < pipe.top || ballY + BALL_RADIUS > pipe.top + PIPE_GAP) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function draw() {
+  ctx.clearRect(0, 0, WIDTH, HEIGHT);
+  for (const pipe of pipes) drawPipe(pipe);
+  drawFootball(WIDTH / 4, ballY, ctx);
+}
+
+function update() {
+  ballVel += GRAVITY;
+  ballY += ballVel;
+
+  for (const pipe of pipes) pipe.x -= PIPE_SPEED;
+
+  if (pipes[pipes.length - 1].x < WIDTH - 200) pipes.push(newPipe());
+  if (pipes[0].x < -PIPE_WIDTH) pipes.shift();
+
+  for (const pipe of pipes) {
+    if (collide(ballY, pipe)) endGame();
+    if (!pipe.passed && pipe.x + PIPE_WIDTH < WIDTH / 4) {
+      score++;
+      pipe.passed = true;
+    }
+  }
+
+  if (ballY + BALL_RADIUS > HEIGHT || ballY - BALL_RADIUS < 0) endGame();
+}
+
+function endGame() {
+  running = false;
+  showOverlay();
+}
+
+function showOverlay() {
+  overlay.innerHTML = `<div id="gameover">Game Over!<br>Score: ${score}<br>
+    <button id="restartBtn">Restart</button></div>`;
+  // Add click handler to the restart button
+  const btn = document.getElementById("restartBtn");
+  if (btn) {
+    btn.onclick = function(e) {
+      e.stopPropagation();
+      overlay.innerHTML = "";
+      startGame();
+    }
+  }
+}
+
+function loop() {
+  if (running) {
+    update();
+    draw();
+    scoreDiv.innerText = "Score: " + score;
+    requestAnimationFrame(loop);
+  }
+}
+
+function flap() {
+  if (!running) return;
+  ballVel = FLAP_STRENGTH;
+}
+
+// Input
+window.addEventListener("keydown", e => {
+  if (e.code === "Space") flap();
+});
+canvas.addEventListener("mousedown", flap);
+canvas.addEventListener("touchstart", e => { flap(); e.preventDefault(); });
+
+// Main
+function startGame() {
+  resetGame();
+  loop();
+}
+
+startGame();
+</script>
+</body>
+</html>
